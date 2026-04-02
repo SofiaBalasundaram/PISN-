@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 from light_curve.light_curve_py import RainbowFit
 
 # Constants
+## hello 
+
 c = 3e5  # speed of light in km/s
 H0 = 67.8  # Hubble constant in km/s/Mpc
 z = 0.166  # redshift
