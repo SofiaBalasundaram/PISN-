@@ -4,66 +4,65 @@
 Created on Mon Mar 30 19:30:28 2026
 
 @author: sofiabalasundaram
-"""
+""" 
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from light_curve.light_curve_py import RainbowFit
 
-# Constants
-## hello 
+# ---------------------------- Constants -----------------------------------#
 
-c = 3e5  # speed of light in km/s
-H0 = 67.8  # Hubble constant in km/s/Mpc
-z = 0.166  # redshift
+c = 3e5      # Speed of light [km/s]
+H0 = 67.8    # Hubble constant [km/s/Mpc]
+z = 0.166    # Redshift of SN 2018ibb
 
-### ----------------------------File-----------------------------------------###
 
-# Reading the CSV file
+# ---------------------------- Load Data -----------------------------------#
+
+# Read photometric data (magnitudes, errors, filters, time)
 df = pd.read_csv("2018ibb_Photometric_Data.csv")
+
+# Create working copy
 data = df.copy()
 
-# Seperating the filters zg and zr in the file
-zr_data = df[df['filter'] == 'zr']
-zg_data = df[df['filter'] == 'zg']
-
-
-### ---------------------Finding Absolute Magnitude--------------------------###
-
-
-# Distance modulus
-def distance_modulus(z, c, H0):
-    # Luminosity distance in Mpc.  Using low-redshift approximation: 
-    #d_L ≈ (c/H0) * z
-    d_l_Mpc = (c / H0) * z
-    d_l_pc = d_l_Mpc * 1e6  # Convert to parsecs
-    return 5 * np.log10(d_l_pc / 10)
-
-# Absolute magnitude using DM(z) + 2.5 log(1+z)
-def calc_abs_mag_DM(apparent_mag, z, c, H0):
-    DM = distance_modulus(z, c, H0)
-    return apparent_mag - DM + 2.5 * np.log10(1 + z)
-
-# Note to self - astropy can do this rewrite accordingly
-
-
-# Separate the filters and make copies
+# Separate data by filter for independent analysis
 zr_data = df[df['filter'] == 'zr'].copy()
 zg_data = df[df['filter'] == 'zg'].copy()
 
 
+# --------------------- Absolute Magnitude ---------------------------------#
 
-### ---------------------Finding Maximum Brightness--------------------------###
+def distance_modulus(z, c, H0):
+    """
+    Compute distance modulus using low-redshift approximation:
+    d_L ≈ (c/H0) * z
+    """
+    d_l_Mpc = (c / H0) * z          # Luminosity distance [Mpc]
+    d_l_pc = d_l_Mpc * 1e6          # Convert to parsec
+    return 5 * np.log10(d_l_pc / 10)
 
-# Calculate absolute magnitudes first
+def calc_abs_mag_DM(apparent_mag, z, c, H0):
+    """
+    Convert apparent magnitude to absolute magnitude.
+    Includes cosmological (1+z) correction.
+    """
+    DM = distance_modulus(z, c, H0)
+    return apparent_mag - DM + 2.5 * np.log10(1 + z)
+
+
+# Compute absolute magnitudes for both filters
 zg_data['abs_mag'] = calc_abs_mag_DM(zg_data['mag'], z, c, H0)
 zr_data['abs_mag'] = calc_abs_mag_DM(zr_data['mag'], z, c, H0)
 
-# Find peak indices using absolute magnitude (brightest = smallest value)
+
+# --------------------- Peak Brightness ------------------------------------#
+
+# Find brightest point (minimum magnitude)
 idx_zg = zg_data['abs_mag'].idxmin()
 idx_zr = zr_data['abs_mag'].idxmin()
 
-# Extract peak magnitude and time
+# Extract peak magnitude and corresponding time (MJD)
 min_mag_zg = zg_data.loc[idx_zg, 'abs_mag']
 t_max_zg = zg_data.loc[idx_zg, 'mjd']
 
@@ -76,138 +75,148 @@ print("Time at maximum brightness for G-band:", t_max_zg)
 print("Maximum brightness for R-band:", min_mag_zr)
 print("Time at maximum brightness for R-band:", t_max_zr)
 
-### --------------------Changing from MJD to rest frame---------------------###
 
-# Calculating rest frame
+# --------------------- Rest-Frame Time ------------------------------------#
+
+# Convert observation time to rest-frame time:
+# removes time dilation due to cosmic expansion
 zg_data['t_rest'] = (zg_data['mjd'] - t_max_zg) / (1 + z)
 zr_data['t_rest'] = (zr_data['mjd'] - t_max_zr) / (1 + z)
 
 
-### ------------------------Plotting-----------------------------------------###
+# --------------------- Plot Light Curves ----------------------------------#
 
-# Errors
+# Use magnitude errors directly
 zg_data['abs_mag_err'] = zg_data['magerr']
 zr_data['abs_mag_err'] = zr_data['magerr']
 
-
-# Plotting lightcurve for zr
+# R-band light curve
 plt.figure(figsize=(8, 5))
 plt.plot(zr_data['t_rest'], zr_data['abs_mag'], color='red', label='zr')
-plt.errorbar(zr_data['t_rest'], zr_data['abs_mag'], yerr=zr_data['abs_mag_err'],
-             fmt='none', label='zr', ecolor='black', alpha=0.9, zorder=1)
-plt.gca().invert_yaxis()  # magnitudes are brighter when smaller
+plt.errorbar(zr_data['t_rest'], zr_data['abs_mag'],
+             yerr=zr_data['abs_mag_err'],
+             fmt='none', ecolor='black', alpha=0.9)
+plt.gca().invert_yaxis()  # smaller mag = brighter
 plt.xlabel('Days Since Maximum')
-plt.ylabel('Apparent Magnitude')
-plt.title('Light Curve for R - Band filter')
+plt.ylabel('Absolute Magnitude')
+plt.title('Light Curve (R-band)')
 plt.legend()
 plt.show()
 
-# Plotting lightcurve for zg
+# G-band light curve
 plt.figure(figsize=(8, 5))
 plt.plot(zg_data['t_rest'], zg_data['abs_mag'], color='green', label='zg')
-plt.errorbar(zg_data['t_rest'], zg_data['abs_mag'], yerr=zg_data['abs_mag_err'],
-             fmt='none', label='zr', ecolor='black', zorder=1)
+plt.errorbar(zg_data['t_rest'], zg_data['abs_mag'],
+             yerr=zg_data['abs_mag_err'],
+             fmt='none', ecolor='black')
 plt.gca().invert_yaxis()
 plt.xlabel('Days Since Maximum')
-plt.ylabel('Apparent Magnitude')
-plt.title('Light Curve for G-Band filter')
+plt.ylabel('Absolute Magnitude')
+plt.title('Light Curve (G-band)')
 plt.legend()
 plt.show()
 
-###------------------------Feature Extraction------------------------------###
 
-# we want to combine the filters into one array and map filter names to simpler
-# band labels for RainbowFit
-data['band'] = data['filter'].map({
-    'zg': 'g',
-    'zr': 'r'
-})
+# --------------------- Prepare Data for RainbowFit ------------------------#
 
-# Each band corresponds to a effective wavelength (in Angstrom) 
-# so assign wavelength
+# Map filters to simplified band labels
+data['band'] = data['filter'].map({'zg': 'g', 'zr': 'r'})
+
+# Assign effective wavelengths (Ångstrom)
 band_wave_aa = {
     'g': 4770.0,
     'r': 6231.0
 }
 
-# RainbowFit works with fluxes so convert mag to flux 
+# Convert magnitudes → flux (RainbowFit works in flux)
 flux = 10**(-0.4 * data['mag'].values)
 
-# Propagation of errors for magnitudes into fluxes 
+# Propagate magnitude errors to flux errors 
 flux_err = flux * (0.4 * np.log(10)) * data['magerr'].values
 
-# Listing inputs for Rainbowfit 
+# Extract time and band arrays
 t = data['mjd'].values
 band = data['band'].values
 
-# Create RainbowFit model
+
+# --------------------- Fit Rainbow Model ----------------------------------#
+
+# Initialize model
 rainbow_model = RainbowFit.from_angstrom(
-    band_wave_aa,      # your band → wavelength mapping
+    band_wave_aa,
     with_baseline=False,
-    temperature='sigmoid',  # default logistic function
-    bolometric='bazin'      # default Bazin flux evolution
-)
-# Fit Rainbow model to your data
-values = rainbow_model(
-    t,         # observation times
-    flux,      # fluxes
-    sigma=flux_err,  # flux errors
-    band=band       # band labels
+    temperature='sigmoid',
+    bolometric='bazin'
 )
 
-# Print parameters neatly with rounding
+# Fit model to data
+values = rainbow_model(t, flux, sigma=flux_err, band=band)
+
+# Print fitted parameters
 for name, val in zip(rainbow_model.names, values):
-    if abs(val) < 1e-2:          # very small numbers → scientific notation
+    if abs(val) < 1e-2:
         print(f"{name:15}: {val:.2e}")
-    else:                        # normal numbers → 2 decimal places
+    else:
         print(f"{name:15}: {val:.2f}")
-        
 
-# Generate model fluxes using the fitted parameters
-# model_flux = rainbow_model.model(t, band, *values[:-1])  # exclude chi2
- 
-# Smoothing 
-smooth_time = np.linspace(58350, 58750, 1000)
 
-smooth_band_g = np.array(['g'] * len(smooth_time))
-smooth_band_r = np.array(['r'] * len(smooth_time))
+# --------------------- Smooth Model for Plotting --------------------------#
 
-model_flux_g = rainbow_model.model(smooth_time, smooth_band_g, *values[:-1])
-model_flux_r = rainbow_model.model(smooth_time, smooth_band_r, *values[:-1])
+# Evaluate model on dense time grid for smooth visualization
+smooth_time = np.linspace(58350, 58750, 100)
+
+# Generate model curves for each band separately
+smooth_flux_g = rainbow_model.model(
+    smooth_time,
+    np.repeat('g', len(smooth_time)),
+    *values[:-1]
+)
+
+smooth_flux_r = rainbow_model.model(
+    smooth_time,
+    np.repeat('r', len(smooth_time)),
+    *values[:-1]
+)
+
+
+# --------------------- Plot Fit -------------------------------------------#
 
 plt.figure(figsize=(8,5))
 
-# G-band
+# Plot data points
 mask_g = band == 'g'
 plt.errorbar(t[mask_g], flux[mask_g], yerr=flux_err[mask_g],
              fmt='o', color='darkgreen', label='g-band data', alpha=0.7)
-plt.plot(smooth_time, model_flux_g, '-', color='green', label='g-band RainbowFit')
 
-# R-band
 mask_r = band == 'r'
 plt.errorbar(t[mask_r], flux[mask_r], yerr=flux_err[mask_r],
              fmt='o', color='orange', label='r-band data', alpha=0.7)
-plt.plot(smooth_time, model_flux_r, '-', color='red', label='r-band RainbowFit')
+
+# Plot smooth fitted model
+plt.plot(smooth_time, smooth_flux_g, '-', color='green', label='g-band fit')
+plt.plot(smooth_time, smooth_flux_r, '-', color='red', label='r-band fit')
 
 plt.xlabel("MJD")
 plt.ylabel("Flux (relative)")
 plt.title("SN 2018ibb RainbowFit")
 plt.legend()
 
-
-# Save figure AFTER plotting everything
+# Save and show figure
 plt.savefig("SN2018ibb_RainbowFit.png", dpi=300, bbox_inches='tight')
-plt.show()  # optional, displays plot
-plt.close()  # close figure to avoid overlap
+plt.show()
+plt.close()
 
-# Round or format numbers for CSV
+
+# --------------------- Save Extracted Features ----------------------------#
+
+# Format parameters for CSV output
 feature_dict = {}
 for name, val in zip(rainbow_model.names, values):
-    if abs(val) < 1e-2:  # very small → scientific
+    if abs(val) < 1e-2:
         feature_dict[name] = f"{val:.2e}"
-    else:  # normal numbers → 2 decimals
+    else:
         feature_dict[name] = round(val, 2)
 
-# Create dataframe and save
+# Save features
 df_features = pd.DataFrame([feature_dict])
 df_features.to_csv("SN2018ibb_RainbowFit_Features.csv", index=False)
