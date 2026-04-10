@@ -4,8 +4,7 @@
 Created on Mon Mar 30 19:30:28 2026
 
 @author: sofiabalasundaram
-""" 
-
+"""
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -15,7 +14,7 @@ from light_curve.light_curve_py import RainbowFit
 
 c = 3e5      # Speed of light [km/s]
 H0 = 67.8    # Hubble constant [km/s/Mpc]
-z = 0.166    # Redshift of SN 2018ibb
+z_0 = 0.166    # Redshift of SN 2018ibb
 
 
 # ---------------------------- Load Data -----------------------------------#
@@ -52,8 +51,8 @@ def calc_abs_mag_DM(apparent_mag, z, c, H0):
 
 
 # Compute absolute magnitudes for both filters
-zg_data['abs_mag'] = calc_abs_mag_DM(zg_data['mag'], z, c, H0)
-zr_data['abs_mag'] = calc_abs_mag_DM(zr_data['mag'], z, c, H0)
+zg_data['abs_mag'] = calc_abs_mag_DM(zg_data['mag'], z_0, c, H0)
+zr_data['abs_mag'] = calc_abs_mag_DM(zr_data['mag'], z_0, c, H0)
 
 
 # --------------------- Peak Brightness ------------------------------------#
@@ -80,8 +79,8 @@ print("Time at maximum brightness for R-band:", t_max_zr)
 
 # Convert observation time to rest-frame time:
 # removes time dilation due to cosmic expansion
-zg_data['t_rest'] = (zg_data['mjd'] - t_max_zg) / (1 + z)
-zr_data['t_rest'] = (zr_data['mjd'] - t_max_zr) / (1 + z)
+zg_data['t_rest'] = (zg_data['mjd'] - t_max_zg) / (1 + z_0)
+zr_data['t_rest'] = (zr_data['mjd'] - t_max_zr) / (1 + z_0)
 
 
 # --------------------- Plot Light Curves ----------------------------------#
@@ -138,7 +137,6 @@ flux_err = flux * (0.4 * np.log(10)) * data['magerr'].values
 t = data['mjd'].values
 band = data['band'].values
 
-
 # --------------------- Fit Rainbow Model ----------------------------------#
 
 # Initialize model
@@ -159,7 +157,113 @@ for name, val in zip(rainbow_model.names, values):
     else:
         print(f"{name:15}: {val:.2f}")
 
+# --------------------- Smooth Model for Plotting --------------------------#
 
+# Evaluate model on dense time grid for smooth visualization
+smooth_time = np.linspace(58350, 58750, 100)
+
+# Generate model curves for each band separately
+smooth_flux_g = rainbow_model.model(
+    smooth_time,
+    np.repeat('g', len(smooth_time)),
+    *values[:-1]
+)
+
+smooth_flux_r = rainbow_model.model(
+    smooth_time,
+    np.repeat('r', len(smooth_time)),
+    *values[:-1]
+)
+
+
+# --------Simulated Observational Effects on Supernova Light Curves---------#
+
+# ------------------- Redshift / Time Dilation ------------------------------#
+
+def apply_redshift(t, z):
+    """
+    Apply time dilation due to redshift.
+    Higher redshift stretches observed time by (1 + z).
+    """
+    return t * (1 + z) / (1 + z_0)
+
+
+# ------------------- Light Curve Stretch ----------------------------------#
+
+def apply_stretch(t, stretch_factor):
+    """
+    Stretch or compress the light curve in time.
+    """
+    return t * stretch_factor
+
+
+# ------------------- Magnitude Shift (Brightness Change) ------------------#
+
+def apply_magnitude_shift(flux, mag_shift):
+    """
+    Apply a shift in magnitude to the flux.
+    Converts magnitude difference into a multiplicative flux scaling.
+    """
+    return flux * 10**(-0.4 * mag_shift)
+
+
+# ------------------- Signal-to-Noise / Noise Model ------------------------#
+
+def apply_snr_noise(flux, snr_scale):
+    """
+    Add Gaussian observational noise to simulate measurement uncertainty.
+    Noise amplitude scales with flux and inverse SNR.
+    """
+    noise = np.random.normal(0, flux / snr_scale)
+    return flux + noise
+
+
+# --------------------- Survey Sampling ------------------------------------#
+
+def apply_sampling(t, flux, band, sampling_fraction):
+    """
+    Randomly removing data points to mimic real life data
+    """
+    mask = np.random.rand(len(t)) < sampling_fraction
+    return t[mask], flux[mask], band[mask]
+
+
+# --------------------- Redshift Comparison Plot --------------------------#
+
+plt.figure(figsize=(12, 6))
+
+# Create a smooth time axis (not actually used in final plot here, but kept for potential interpolation)
+smooth_time = np.linspace(min(t), max(t), 200)
+
+# Define redshifts to compare
+z_values = [0.05, 0.166, 0.4]
+
+# Plot light curve at different redshifts
+for z in z_values:
+
+    # Apply cosmological time dilation
+    t_z = apply_redshift(t, z)
+
+    # Shift each curve so they start at zero for easier visual comparison
+    t_z = t_z - np.min(t_z)
+
+    # Plot flux vs shifted time
+    plt.plot(t_z, flux, linewidth=2, label=f"z = {z}")
+
+# Axis labels and plot formatting
+plt.xlabel("Time (shifted)")
+plt.ylabel("Flux")
+plt.title("Effect of Redshift on Light Curve")
+plt.legend()
+plt.grid(alpha=0.3)
+
+# Save figure to file with high resolution
+plt.savefig("redshift_lightcurve.png", dpi=300, bbox_inches="tight")
+
+# Display plot
+plt.show()
+
+"""
 # --------------------- Smooth Model for Plotting --------------------------#
 
 # Evaluate model on dense time grid for smooth visualization
@@ -220,3 +324,4 @@ for name, val in zip(rainbow_model.names, values):
 # Save features
 df_features = pd.DataFrame([feature_dict])
 df_features.to_csv("SN2018ibb_RainbowFit_Features.csv", index=False)
+"""
