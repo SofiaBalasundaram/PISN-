@@ -15,6 +15,7 @@ from astropy.constants import c, h, k_B
 from astropy import units as u 
 from fink_utils.photometry.conversion import mag2fluxcal_snana
 from dust_extinction.parameter_averages import F99 
+from astropy.cosmology import Planck18 as cosmo
 import pickle
 import itertools
 import time 
@@ -40,26 +41,21 @@ zg_data = df[df['filter'] == 'zg'].copy()
 
 # --------------------- Absolute Magnitude ---------------------------------#
 
-def distance_modulus(z, c_kms, H0):
+def distance_modulus(z):
     """
-    Compute distance modulus using low-redshift approximation:
-    d_L ≈ (c/H0) * z
+    Compute distance modulus using astropy Planck18 cosmology.
+    More accurate than low-redshift approximation for higher redshifts.
     """
-    d_l_Mpc = (c_kms / H0) * z          # Luminosity distance [Mpc]
-    d_l_pc = d_l_Mpc * 1e6          # Convert to parsec
+    d_l_pc = cosmo.luminosity_distance(z).to(u.pc).value
     return 5 * np.log10(d_l_pc / 10)
 
-def calc_abs_mag_DM(apparent_mag, z, c_kms, H0):
-    """
-    Convert apparent magnitude to absolute magnitude.
-    Includes cosmological (1+z) correction.
-    """
-    DM = distance_modulus(z, c_kms, H0)
+def calc_abs_mag_DM(apparent_mag, z):
+    DM = distance_modulus(z)
     return apparent_mag - DM + 2.5 * np.log10(1 + z)
 
 # Compute absolute magnitudes for both filters
-zg_data['abs_mag'] = calc_abs_mag_DM(zg_data['mag'], z_0, c_kms, H0)
-zr_data['abs_mag'] = calc_abs_mag_DM(zr_data['mag'], z_0, c_kms, H0)
+zg_data['abs_mag'] = calc_abs_mag_DM(zg_data['mag'], z_0)
+zr_data['abs_mag'] = calc_abs_mag_DM(zr_data['mag'], z_0)
 
 # --------------------- Peak Brightness ------------------------------------#
 
@@ -648,6 +644,11 @@ for i, lc in enumerate(all_lightcurves):
             feature_dict[name] = val
             
         all_features.append(feature_dict)
+        if i % 100 == 0:
+            print(f"Progress: {i}/{len(all_lightcurves)} light curves fitted")
+        if i % 100 == 0:
+            df_temp = pd.DataFrame(all_features)
+            df_temp.to_csv("simulated_features.csv", index=False)
         
     except Exception as e:
         print(f"Light curve {i} failed: {e}")
